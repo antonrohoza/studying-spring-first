@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javafx.util.Pair;
@@ -24,7 +25,6 @@ import lombok.SneakyThrows;
 
 public class ClassPathApplicationContext implements ApplicationContext {
     private static final String SETTER_PREFIX = "set";
-    private static final int SETTER_PARAMETER_INDEX = 0;
 
     private Map<String, Bean> beans;
     private BeanDefinitionReader beanDefinitionReader;
@@ -97,28 +97,25 @@ public class ClassPathApplicationContext implements ApplicationContext {
     }
 
     private void injectValueDependencies(List<BeanDefinition> beanDefinitions) {
-        List<String> allBeansWithProperties = beanDefinitions.stream()
-                                                             .filter(beanDefinition -> beanDefinition.getDependencies() != null)
-                                                             .map(BeanDefinition::getId)
-                                                             .collect(Collectors.toList());
-
-        beans.entrySet().stream()
-             .filter(beanEntry -> allBeansWithProperties.contains(beanEntry.getKey()))
-             .forEach(beanEntry -> getElementById(beanDefinitions, beanEntry.getKey(), BeanDefinition::getDependencies)
-                 .forEach((key, value) -> setAllPropertiesForCurrentBean(beanEntry, getElementById(beanDefinitions, beanEntry.getKey(), BeanDefinition::getDependencies))));
-
+        injectElementDependencies(beanDefinitions, BeanDefinition::getDependencies, this::setAllPropertiesForCurrentBean);
     }
 
     private void injectRefDependencies(List<BeanDefinition> beanDefinitions) {
-        List<String> allBeansWithReference = beanDefinitions.stream()
-                                                             .filter(beanDefinition -> beanDefinition.getRefDependencies() != null)
-                                                             .map(BeanDefinition::getId)
-                                                             .collect(Collectors.toList());
+        injectElementDependencies(beanDefinitions, BeanDefinition::getRefDependencies, this::setAllRefsForCurrentBean);
+    }
+
+    private void injectElementDependencies(List<BeanDefinition> beanDefinitions,
+                                           Function<BeanDefinition, Map<String, String>> getElementsFunction,
+                                           BiConsumer<Entry<String,Bean>, Map<String,String>> setElementsForCurrentBeanConsumer) {
+        List<String> filteredBeans = beanDefinitions.stream()
+                                                    .filter(beanDefinition -> getElementsFunction.apply(beanDefinition) != null)
+                                                    .map(BeanDefinition::getId)
+                                                    .collect(Collectors.toList());
 
         beans.entrySet().stream()
-             .filter(beanEntry -> allBeansWithReference.contains(beanEntry.getKey()))
-             .forEach(beanEntry -> getElementById(beanDefinitions, beanEntry.getKey(), BeanDefinition::getRefDependencies)
-                 .forEach((key, value) -> setAllRefsForCurrentBean(beanEntry, getElementById(beanDefinitions, beanEntry.getKey(),BeanDefinition::getRefDependencies))));
+             .filter(beanEntry -> filteredBeans.contains(beanEntry.getKey()))
+             .forEach(beanEntry -> setElementsForCurrentBeanConsumer.accept(beanEntry, getElementById(beanDefinitions, beanEntry.getKey(), getElementsFunction)));
+
     }
 
     private void setAllRefsForCurrentBean(Map.Entry<String, Bean> beanEntry, Map<String, String> beanProperties) {
