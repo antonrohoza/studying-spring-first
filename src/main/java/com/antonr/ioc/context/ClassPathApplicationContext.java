@@ -3,6 +3,7 @@ package com.antonr.ioc.context;
 import static com.antonr.ioc.context.cast.JavaNumberTypeCast.castPrimitive;
 
 import com.antonr.ioc.exception.BeanInstantiationException;
+import com.antonr.ioc.exception.BeanNotFoundException;
 import com.antonr.ioc.exception.MultipleBeansForClassException;
 import com.antonr.ioc.io.BeanDefinitionReader;
 import com.antonr.ioc.entity.Bean;
@@ -49,7 +50,6 @@ public class ClassPathApplicationContext implements ApplicationContext {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T getBean(Class<T> clazz) {
-
         List<Object> listOfBeans = beans.values().stream()
                                       .map(Bean::getValue)
                                       .filter(value -> value.getClass() == clazz)
@@ -67,17 +67,17 @@ public class ClassPathApplicationContext implements ApplicationContext {
                         .filter(beanEntry -> name.equals(beanEntry.getKey()) && clazz == beanEntry.getValue().getValue().getClass())
                         .map(beanEntry -> beanEntry.getValue().getValue())
                         .findFirst()
-                        .orElseThrow(() -> new BeanInstantiationException("Wrong instantiation of bean"));
+                        .orElseThrow(() -> new BeanNotFoundException("There is no bean with name: " + name + " and class: " + clazz.getName()));
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <T> T getBean(String name) {
-        return (T) beans.entrySet().stream()
-                        .filter(beanEntry -> name.equals(beanEntry.getKey()))
-                        .map(beanEntry -> beanEntry.getValue().getValue())
-                        .findFirst()
-                        .orElseThrow(() -> new BeanInstantiationException("Wrong instantiation of bean"));
+        if(beans.get(name) != null){
+            return (T) beans.get(name).getValue();
+        }else {
+            throw new BeanNotFoundException("There is no bean with name: " + name);
+        }
     }
 
     @Override
@@ -97,11 +97,15 @@ public class ClassPathApplicationContext implements ApplicationContext {
     }
 
     private void injectValueDependencies(List<BeanDefinition> beanDefinitions) {
-        injectElementDependencies(beanDefinitions, BeanDefinition::getDependencies, this::setAllPropertiesForCurrentBean);
+        injectElementDependencies(beanDefinitions,
+                                  BeanDefinition::getDependencies,
+                                  this::setAllPropertiesForCurrentBean);
     }
 
     private void injectRefDependencies(List<BeanDefinition> beanDefinitions) {
-        injectElementDependencies(beanDefinitions, BeanDefinition::getRefDependencies, this::setAllRefsForCurrentBean);
+        injectElementDependencies(beanDefinitions,
+                                  BeanDefinition::getRefDependencies,
+                                  this::setAllRefsForCurrentBean);
     }
 
     private void injectElementDependencies(List<BeanDefinition> beanDefinitions,
@@ -124,20 +128,22 @@ public class ClassPathApplicationContext implements ApplicationContext {
               .forEach(field -> injectRefs(beanEntry.getValue().getValue(), field));
     }
 
-    @SneakyThrows
     private void injectRefs(Object object, Field field){
-        Class<?> aClass = object.getClass();
         String methodName = getSetterName(field.getName());
-        Method m = aClass.getMethod(methodName, field.getType());
-        // should be only one element in current list
-        List<Object> beanList = beans.entrySet().stream()
-                                    .filter(beanEntry -> field.getName().equals(beanEntry.getKey()))
-                                    .map(beanEntry -> beanEntry.getValue().getValue())
-                                    .collect(Collectors.toList());
-        if(beanList.size() > 1){
-            throw new MultipleBeansForClassException("There is more that one bean declared with name: " + field.getName());
+        try {
+            Method m = object.getClass().getMethod(methodName, field.getType());
+            // should be only one element in current list
+            List<Object> beanList = beans.entrySet().stream()
+                                         .filter(beanEntry -> field.getName().equals(beanEntry.getKey()))
+                                         .map(beanEntry -> beanEntry.getValue().getValue())
+                                         .collect(Collectors.toList());
+            if (beanList.size() > 1) {
+                throw new MultipleBeansForClassException("There is more that one bean declared with name: " + field.getName());
+            }
+            m.invoke(object, beanList.get(0));
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            throw new BeanInstantiationException("Cannot instantiate bean", e);
         }
-        m.invoke(object, beanList.get(0));
     }
 
     private void setAllPropertiesForCurrentBean(Map.Entry<String, Bean> beanEntry, Map<String, String> beanProperties) {
@@ -146,12 +152,15 @@ public class ClassPathApplicationContext implements ApplicationContext {
               .forEach(field -> injectField(beanEntry.getValue().getValue(), field, beanProperties.get(field.getName())));
     }
 
-    @SneakyThrows
-    private void injectField(Object object, Field field, String fieldValue){
+    private void injectField(Object object, Field field, String fieldValue) {
         String methodName = getSetterName(field.getName());
-        Method m = object.getClass().getMethod(methodName, field.getType());
-        m.invoke(object, field.getType() == String.class ? fieldValue
-                                                         : castPrimitive(fieldValue, field.getType()));
+        try {
+            Method method = object.getClass().getMethod(methodName, field.getType());
+            method.invoke(object, field.getType() == String.class ? fieldValue
+                                                                  : castPrimitive(fieldValue, field.getType()));
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            throw new BeanInstantiationException("Cannot instantiate bean", e);
+        }
     }
 
     private String getSetterName(String propertyName) {

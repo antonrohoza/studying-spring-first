@@ -1,6 +1,5 @@
 package com.antonr.ioc.exception;
 
-
 public class SourceParseException extends RuntimeException {
 
   public SourceParseException(String message, Throwable cause) {
