@@ -9,11 +9,12 @@ class XMLBeanDefinitionReaderTestGroovy extends GroovyTestCase {
     @Override
     void setUp() {
         expectedBeanDefinitions.add(new BeanDefinition(id: "mailService",
-                beanClassName: "com.antonr.ioc.service.MailService", dependencies:
-                ["protocol": "POP3", "port": "3000"]))
-
+                beanClassName: "com.antonr.ioc.service.MailService",
+                dependencies: ["protocol": "POP3", "port": "3000"]))
         expectedBeanDefinitions.add(new BeanDefinition(id: "userService",
                 beanClassName: "com.antonr.ioc.service.UserService",
+                // password dependency from context.xml
+                dependencies: ["password": "lalala"],
                 refDependencies: ["mailService": "mailService"]))
         expectedBeanDefinitions.add(new BeanDefinition(id: "paymentService",
                 beanClassName: "com.antonr.ioc.service.PaymentService",

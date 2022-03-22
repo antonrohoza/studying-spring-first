@@ -13,12 +13,13 @@ class ClassPathApplicationContextITestGroovy extends GroovyTestCase {
     private MailService mailService
     private PaymentService paymentService
     private PaymentService paymentServiceWithMaxAmount
-    private ApplicationContext applicationContext;
+    private ApplicationContext applicationContext
 
     @Override
     void setUp() {
         mailService = new MailService(protocol: "POP3", port: 3000)
-        userService = new UserService(mailService: mailService)
+        // added property password and it's different with context.xml value
+        userService = new UserService(mailService: mailService, password: "qwerty")
         paymentService = new PaymentService(mailService: mailService)
         paymentServiceWithMaxAmount = new PaymentService(mailService: mailService, maxAmount: 500)
         applicationContext = new ClassPathApplicationContext("src/test/resources/context.xml")
@@ -27,7 +28,6 @@ class ClassPathApplicationContextITestGroovy extends GroovyTestCase {
     void testApplicationContextInstantiation() {
         ApplicationContext applicationContextSetReader = new ClassPathApplicationContext()
         applicationContextSetReader.setBeanDefinitionReader(new XMLBeanDefinitionReader("src/test/resources/context.xml"))
-        // how is it start() accessible from ApplicationContext
         applicationContextSetReader.start()
         assertTrue(applicationContext.getBean(UserService.class) == applicationContextSetReader.getBean(UserService.class))
         assertTrue(applicationContext.getBean("mailService", MailService.class) == applicationContextSetReader.getBean("mailService", MailService.class))

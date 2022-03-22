@@ -10,6 +10,7 @@ import com.antonr.ioc.entity.Bean;
 import com.antonr.ioc.entity.BeanDefinition;
 import com.antonr.ioc.io.XMLBeanDefinitionReader;
 
+import com.antonr.ioc.postprocessor.BeanFactoryPostProcessor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -21,7 +22,6 @@ import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import javafx.util.Pair;
 import lombok.SneakyThrows;
 
 public class ClassPathApplicationContext implements ApplicationContext {
@@ -42,6 +42,7 @@ public class ClassPathApplicationContext implements ApplicationContext {
     public void start() {
         beans = new HashMap<>();
         List<BeanDefinition> beanDefinitions = beanDefinitionReader.getBeanDefinitions();
+        beanFactoryPostProcess(beanDefinitions);
         instantiateBeans(beanDefinitions);
         injectValueDependencies(beanDefinitions);
         injectRefDependencies(beanDefinitions);
@@ -85,15 +86,44 @@ public class ClassPathApplicationContext implements ApplicationContext {
         this.beanDefinitionReader = beanDefinitionReader;
     }
 
+    private void beanFactoryPostProcess(List<BeanDefinition> beanDefinitions){
+        List<BeanDefinition> postProcessors = beanDefinitions.stream()
+                                                             .filter(this::isPostProcessor)
+                                                             .collect(Collectors.toList());
+        beanDefinitions.stream()
+                       .filter(beanDefinition -> !isPostProcessor(beanDefinition))
+                       .forEach(beanDefinition -> postProcessors.forEach(postProcessor -> invokePostProcessor(beanDefinition, postProcessor)));
+
+    }
+
+    private boolean isPostProcessor(BeanDefinition beanDefinition) {
+        return getInstanceByBeanClassName(beanDefinition.getBeanClassName()) instanceof BeanFactoryPostProcessor;
+    }
+
+    private void invokePostProcessor(BeanDefinition beanDefinition, BeanDefinition postProcessor) {
+        String methodName = "postProcessBeanFactory";
+        try {
+            Object currentObject = getInstanceByBeanClassName(postProcessor.getBeanClassName());
+            Method method = currentObject.getClass().getMethod(methodName, beanDefinition.getClass());
+            method.invoke(currentObject, beanDefinition);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            throw new BeanInstantiationException("Cannot instantiate bean", e);
+        }
+    }
+
     private void instantiateBeans(List<BeanDefinition> beanDefinitions) {
         beans = beanDefinitions.stream()
                                .map(this::getBeanInstance)
                                .collect(Collectors.toMap(Bean::getId, Function.identity()));
     }
 
-    @SneakyThrows
     private Bean getBeanInstance(BeanDefinition bd) {
-        return new Bean(bd.getId(), Class.forName(bd.getBeanClassName()).getConstructor().newInstance());
+        return new Bean(bd.getId(), getInstanceByBeanClassName(bd.getBeanClassName()));
+    }
+
+    @SneakyThrows
+    private Object getInstanceByBeanClassName(String beanClassName){
+        return Class.forName(beanClassName).getConstructor().newInstance();
     }
 
     private void injectValueDependencies(List<BeanDefinition> beanDefinitions) {
@@ -118,7 +148,7 @@ public class ClassPathApplicationContext implements ApplicationContext {
 
         beans.entrySet().stream()
              .filter(beanEntry -> filteredBeans.contains(beanEntry.getKey()))
-             .forEach(beanEntry -> setElementsForCurrentBeanConsumer.accept(beanEntry, getElementById(beanDefinitions, beanEntry.getKey(), getElementsFunction)));
+             .forEach(beanEntry -> setElementsForCurrentBeanConsumer.accept(beanEntry, getBeanPropertyById(beanDefinitions, beanEntry.getKey(), getElementsFunction)));
 
     }
 
@@ -167,7 +197,7 @@ public class ClassPathApplicationContext implements ApplicationContext {
         return SETTER_PREFIX + propertyName.substring(0, 1).toUpperCase() + propertyName.substring(1);
     }
 
-    private Map<String, String> getElementById(List<BeanDefinition> beanDefinitions, String id, Function<BeanDefinition, Map<String, String>> function){
+    private Map<String, String> getBeanPropertyById(List<BeanDefinition> beanDefinitions, String id, Function<BeanDefinition, Map<String, String>> function){
         return beanDefinitions.stream()
                               .filter(bd -> id.equals(bd.getId()))
                               .map(function)

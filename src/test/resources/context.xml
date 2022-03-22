@@ -1,4 +1,6 @@
 <beans>
+    <bean id="passwordBeanFactoryPostProcessor" class="com.antonr.ioc.service.PasswordBeanFactoryPostProcessor">
+    </bean>
 
     <bean id="mailService" class="com.antonr.ioc.service.MailService">
         <property name="protocol" value="POP3"/>
@@ -16,5 +18,6 @@
 
     <bean id="userService" class="com.antonr.ioc.service.UserService">
         <property name="mailService" ref="mailService"/>
+        <property name="password" value="lalala"/>
     </bean>
 </beans>

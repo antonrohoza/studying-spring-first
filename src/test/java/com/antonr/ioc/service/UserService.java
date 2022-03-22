@@ -6,5 +6,6 @@ import lombok.Data;
 public class UserService {
 
   private MailService mailService;
+  private String password;
 
 }
