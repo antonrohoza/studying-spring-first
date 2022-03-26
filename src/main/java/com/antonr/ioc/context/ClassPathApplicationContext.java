@@ -153,9 +153,10 @@ public class ClassPathApplicationContext implements ApplicationContext {
     }
 
     private void setAllRefsForCurrentBean(Map.Entry<String, Bean> beanEntry, Map<String, String> beanProperties) {
-        Arrays.stream(beanEntry.getValue().getValue().getClass().getDeclaredFields())
+        Object currentObject = beanEntry.getValue().getValue();
+        Arrays.stream(currentObject.getClass().getDeclaredFields())
               .filter(field -> beanProperties.containsKey(field.getName()))
-              .forEach(field -> injectRefs(beanEntry.getValue().getValue(), field));
+              .forEach(field -> injectRefs(currentObject, field));
     }
 
     private void injectRefs(Object object, Field field){
@@ -177,9 +178,10 @@ public class ClassPathApplicationContext implements ApplicationContext {
     }
 
     private void setAllPropertiesForCurrentBean(Map.Entry<String, Bean> beanEntry, Map<String, String> beanProperties) {
-        Arrays.stream(beanEntry.getValue().getValue().getClass().getDeclaredFields())
+        Object currentObject = beanEntry.getValue().getValue();
+        Arrays.stream(currentObject.getClass().getDeclaredFields())
               .filter(field -> beanProperties.containsKey(field.getName()))
-              .forEach(field -> injectField(beanEntry.getValue().getValue(), field, beanProperties.get(field.getName())));
+              .forEach(field -> injectField(currentObject, field, beanProperties.get(field.getName())));
     }
 
     private void injectField(Object object, Field field, String fieldValue) {
